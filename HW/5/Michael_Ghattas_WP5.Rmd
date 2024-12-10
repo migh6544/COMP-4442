@@ -1,0 +1,88 @@
+---
+title: "Michael_Ghattas_WP5"
+author: "Michael Ghattas"
+date: "`r Sys.Date()`"
+output: pdf_document
+---
+
+# Start:
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+
+# Install any missing libraries (if not already installed)
+# install.packages("titanic")
+# install.packages("caret")
+# install.packages("dplyr")
+
+# Load the libraries
+library(titanic)    # Titanic dataset
+library(caret)      # Confusion matrix and performance metrics (optional)
+library(dplyr)      # Data manipulation (optional)
+```
+
+# Step 1: Create training and testing sets with 75% data for training
+
+```{r}
+# Load titanic data
+library(titanic)
+df = titanic_train
+
+# Set a seed for reproducibility
+set.seed(1)
+
+# Split data into training and testing sets
+train.index = sample(1:nrow(df), 0.75 * nrow(df))
+df.train = df[train.index, ]    # Training set
+df.test  = df[-train.index, ]   # Testing set
+```
+
+# Step 2: Determine the odds of survival for men vs women using a table
+
+```{r}
+# Create a table showing the survival counts based on gender
+table(df.train$Sex, df.train$Survived)
+
+# Calculate odds ratio for men vs women
+odds_men <- sum(df.train$Survived[df.train$Sex == 'male'] == 1) / sum(df.train$Survived[df.train$Sex == 'male'] == 0)
+odds_women <- sum(df.train$Survived[df.train$Sex == 'female'] == 1) / sum(df.train$Survived[df.train$Sex == 'female'] == 0)
+odds_ratio <- odds_men / odds_women
+
+odds_ratio
+```
+
+# Step 3: Fit a logistic regression model with sex as a predictor
+
+```{r}
+# Fit logistic regression model
+modelsex = glm(Survived ~ Sex, data = df.train, family = binomial)
+summary(modelsex)
+```
+
+# Step 4: Fit main effects and interaction models
+
+```{r}
+# Main effects model
+mainmodel = glm(Survived ~ Sex + as.factor(Pclass) + Age, data = df.train, family = binomial)
+summary(mainmodel)
+
+# Two-way interactions model
+twowaymodel = glm(Survived ~ (Sex + as.factor(Pclass) + Age)^2, data = df.train, family = binomial)
+summary(twowaymodel)
+```
+
+# Step 5: Compare the two models using drop in deviance and ANOVA
+
+```{r}
+# Use ANOVA to compare models
+anova(mainmodel, twowaymodel, test = "Chisq")
+```
+
+# Step 6: Interpret the odds ratio for age on survival 
+
+```{r}
+# Extracting and interpreting the odds ratio for age
+exp(coef(mainmodel)["Age"])
+```
+
+# End.

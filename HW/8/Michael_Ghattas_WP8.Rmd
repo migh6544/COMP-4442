@@ -1,0 +1,93 @@
+---
+title: "Michael_Ghattas_WP8"
+author: "Michael Ghattas"
+date: "`r Sys.Date()`"
+output: pdf_document
+---
+
+# START:
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+
+# Load necessary libraries
+library(tidyverse)
+library(glmnet)
+library(MASS)
+library(AER)
+```
+
+```{r}
+# Load data
+data(NMES1988)
+NMES1988 <- NMES1988 %>% mutate(emergency = visits)
+
+# Split the data into training and test sets
+set.seed(1)
+n <- nrow(NMES1988)
+train_index <- sample(1:n, size = 0.7 * n)
+train <- NMES1988[train_index, ]
+test <- NMES1988[-train_index, ]
+```
+
+```{r}
+# Fit a Negative Binomial model for emergency room visits
+negbin_model <- glm.nb(emergency ~ ., data = train)
+summary(negbin_model)
+
+# Display the Negative Binomial model summary
+summary(negbin_model)
+```
+
+```{r}
+# Variable selection using Lasso
+X_train <- model.matrix(emergency ~ . - 1, data = train)
+Y_train <- train$emergency
+
+# Fit Lasso using cross-validation
+set.seed(3456787)
+lasso_model <- cv.glmnet(X_train, Y_train, alpha = 1, family = "poisson")
+lasso_lambda_min <- lasso_model$lambda.min
+coef(lasso_model, s = lasso_lambda_min)
+```
+
+```{r}
+# Cross-validation plot for Lasso
+plot(lasso_model)
+title("Lasso Cross-Validation Plot", line = 2.5)
+
+# Display selected coefficients for the lambda.min model in Lasso
+coef(lasso_model, s = lasso_lambda_min)
+
+# Evaluation on test data for the final Lasso model
+X_test <- model.matrix(emergency ~ . - 1, data = test)
+Y_test <- test$emergency
+pred_final <- predict(lasso_model, X_test, s = lasso_lambda_min, type = "response")
+
+# Predicted vs Actual Plot for Lasso model
+plot(Y_test, pred_final, xlab = "Actual Emergency Visits", ylab = "Predicted Emergency Visits",
+     main = "Predicted vs Actual Emergency Visits (Lasso Model)")
+abline(0, 1, col = "red")
+```
+
+```{r}
+# Calculate log-likelihood on the test data for the selected model
+log_likelihood <- sum(Y_test * log(pred_final) - pred_final - log(factorial(Y_test)))
+log_likelihood
+```
+
+# Here’s a summary of the key results:
+
+### Model Selection and Fitting:
+  - A Negative Binomial model was fit to the training data to model emergency room visits, as instructed in the exercise.
+  - Additionally, a Lasso regression with cross-validation was performed as the variable selection method, using a Poisson distribution.
+
+### Model Summaries and Selected Coefficients:
+  - The Negative Binomial model summary indicated significant variables and was displayed in the output.
+  - The Lasso model identified non-zero coefficients based on the lambda.min value.
+
+### Evaluation on Test Data:
+  - The log-likelihood for the Lasso model on the test data was calculated and found to be approximately -4725.585, which assesses the fit of the selected model.
+  - A Predicted vs. Actual plot for emergency room visits was generated, showcasing the performance of the Lasso model on test data.
+
+# END.

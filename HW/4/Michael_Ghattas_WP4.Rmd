@@ -1,0 +1,28 @@
+---
+title: "Michael_Ghattas_WP4"
+author: "Michael Ghattas"
+date: "`r Sys.Date()`"
+output: pdf_document
+---
+
+```{r setup, include = FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+library(MASS)
+library(stats)
+library(car)
+```
+
+## Data Set
+```{r cars}
+attach(Cars93)
+Cars93 = na.omit(Cars93)
+```
+
+```{r}
+model1B = lm(Price ~ Horsepower + Fuel.tank.capacity + Weight + EngineSize + Length + Rev.per.mile + AirBags + Man.trans.avail)
+full.model = model1B
+price.null <- as.formula("Price ~ 1")
+
+backward.model <- step(full.model, scope = price.null, direction = "backward", trace = 1)
+summary(backward.model)
+```

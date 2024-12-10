@@ -1,0 +1,101 @@
+---
+title: "Week 2 Participation"
+author: "Michael Ghattas"
+date: "`r Sys.Date()`"
+output: pdf_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+
+library(car) # For Levene's Test
+library(stats) # For ANOVA and Post-hoc testing
+```
+
+# Exercise
+
+## Research Question:
+
+  - Does vitamin C (dose) or the delivery method (supplement: orange juice or ascorbic acid) affect tooth growth in guinea pigs?
+
+  - Variables
+    len: Length of odontoblasts (tooth growth)
+    supp: Supplement type (VC = Ascorbic Acid, OJ = Orange Juice)
+    dose: Dose levels of vitamin C (0.5 mg, 1 mg, 2 mg)
+
+```{r}
+?ToothGrowth
+attach(ToothGrowth)
+head(ToothGrowth)
+```
+
+```{r}
+Tooth.aov <- aov(len ~ supp * dose, data = ToothGrowth)
+summary(Tooth.aov)
+```
+
+### The ANOVA results provide three main pieces of information:
+
+  - Main Effect of Supplement (supp): F(1, 56) = 12.317, p = 0.000894
+    The supplement type (Orange Juice or Ascorbic Acid) has a significant effect on tooth growth.
+    
+  - Main Effect of Dose (dose): F(1, 56) = 133.415, p < 2e-16
+    The dose of vitamin C has a highly significant effect on tooth growth.
+    
+  - Interaction Effect (supp * dose): F(1, 56) = 5.333, p = 0.024631
+    There is a significant interaction between the supplement type and the dose level.
+    This suggests that the effect of the supplement on tooth growth depends on the dose of vitamin C.
+
+```{r}
+# Assumptions
+shapiro.test(Tooth.aov$residuals)
+boxplot(len ~ supp * dose, data = ToothGrowth)
+leveneTest(len ~ supp * as.factor(dose), data = ToothGrowth)
+```
+
+### Normality (Shapiro-Wilk Test):
+
+  - p-value = 0.5008: The p-value is greater than 0.05, so we do not reject the null hypothesis of normality. The residuals are normally distributed.
+  
+### Homogeneity of Variance (Levene's Test):
+
+  - p-value = 0.1484: The p-value is greater than 0.05, indicating that the variances are equal across the groups, satisfying the homogeneity of variance assumption.
+
+### Interpretation of the Box-plot:
+
+  - OJ consistently results in higher tooth growth compared to VC, regardless of the dose.
+  - Dose levels significantly impact tooth growth, with higher doses leading to greater tooth growth in both supplement groups.
+  - The difference between OJ and VC becomes more pronounced at the higher dose levels, particularly at 2 mg/day, where OJ shows a much larger effect on tooth growth than VC.
+  - This box-plot reinforces the findings from the ANOVA and interaction plots, showing that both the dose and supplement type significantly affect tooth growth, with a notable interaction between these factors.
+
+```{r}
+# Interaction Plots
+interaction.plot(supp, trace.factor = dose, len)
+interaction.plot(dose, trace.factor = supp, len)
+```
+
+### Interpretation of the Interaction Plots:
+
+  - supp vs. dose: This plot shows how the supplement type (OJ or VC) affects tooth growth at each dose level.
+    Orange Juice (OJ) consistently results in higher tooth growth than Ascorbic Acid (VC) at all dose levels.
+    The lines are not parallel, which indicates a potential interaction effect between supplement type and dose.
+    The gap between the OJ and VC lines widens as the dose increases, suggesting that the effect of the supplement becomes more pronounced at higher doses.
+    At the highest dose (2 mg), OJ leads to significantly greater tooth growth compared to VC, while at the lowest dose (0.5 mg), the difference is less pronounced.
+    
+  - dose vs. supp: This plot shows how the dose levels (0.5, 1, and 2 mg/day) affect tooth growth for each supplement.
+    Both, OJ and VC show an increasing trend in tooth growth as the dose of vitamin C increases.
+    However, the OJ line increases more steeply than the VC line, indicating that the increase in tooth growth with dose is more pronounced for OJ than for VC.
+    Again, the non-parallel lines indicate that the effect of dose on tooth growth is different depending on the supplement type.
+    The steeper slope for OJ suggests that OJ has a stronger effect on tooth growth as the dose increases, compared to VC.
+    
+## Answer to Research Question:
+
+  - Yes, both the dose of vitamin C and the delivery method (supplement type: orange juice or ascorbic acid) significantly affect tooth growth in guinea pigs.
+  - The dose of vitamin C has a highly significant effect on tooth growth, as indicated by the ANOVA result with a p-value < 2e-16.
+  - The type of supplement (OJ vs. VC) also has a significant effect on tooth growth (p = 0.000894).
+  - There is a significant interaction effect between dose and supplement type (p = 0.024631). This means the effect of the supplement type on tooth growth depends on the dose of vitamin C.
+  - The interaction plots show that at lower doses (0.5 mg/day), the difference between OJ and VC is smaller, but as the dose increases (to 2 mg/day), OJ results in significantly more tooth growth compared to VC.
+  
+# Conclusion:
+
+  - Both vitamin C dose and the delivery method (supplement type) affect tooth growth in guinea pigs. Higher doses of vitamin C lead to greater tooth growth, and orange juice is more effective than ascorbic acid in promoting tooth growth, especially at higher doses.

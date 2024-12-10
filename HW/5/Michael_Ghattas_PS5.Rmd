@@ -1,0 +1,356 @@
+---
+title: "Problem Set 5, Winter 2024"
+author: "Michael Ghattas"
+output: pdf_document
+---
+
+```{r setup, include=TRUE}
+knitr::opts_chunk$set(echo = TRUE)
+# Load any packages
+library(tidyverse)   # For data manipulation and visualization
+library(lmtest)      # For likelihood ratio tests
+```
+
+# Question 1 - 10 points (A-D)
+
+The relationship between percents, odds, and odds ratios is salient to interpreting logistic regression output. If you're not familiar with the relationship between probability and odds, have a look at the Week 5 live session slides. There is a section on probability and odds that I did not discuss during the live session but included in the slides as a reference. 
+
+If the odds of an event equal $b$, what is the probability $p$ of the event? This question has four parts:
+
+A) Write a function to compute the probability from the odds:
+
+```{r}
+prob.from.odds <- function(b) {
+  return(b / (1 + b))
+}
+```
+
+B) Test your function by inputting three test values - 5, 10, and 20 - and showing what the output of your function is for these values. That is, when the odds are 5, 10, and 20, what are the associated probabilities? 
+
+```{r}
+# Test your function by running this code chunk, which uses 5, 10, and 20 as inputs for your function. 
+prob.from.odds(5)
+prob.from.odds(10)
+prob.from.odds(20)
+```
+
+C) Create a plot that visually demonstrates how the probability changes within in the range of odds=0 to odds=20. Be sure probability is on the y axis and odds are on the x axis.
+
+```{r}
+# Create your plot. Probability should be on the Y-axis and odds should be on the X-axis. 
+odds <- seq(0, 20, 0.1)
+prob <- prob.from.odds(odds)
+plot(odds, prob, type="l", xlab="Odds", ylab="Probability")
+```
+
+D) Answer the following question:
+
+Based on what you see in your plot, what happens to a computed probability as the associated odds increase? This can be answered in one sentence. 
+
+Your answer here: As the odds increase, the probability increases as it approaches 1.
+
+----
+
+CONTEXT: Pew Research Center data
+
+The data in "pew_data.RData" comes from the Pew Research Center, an organization that conducts nationally-representative public opinion polls on a variety of political and social topics. Dr. Durso constructed this data set from the 2017 Pew Research Center Science and NewsSurvey, downloaded from https://www.journalism.org/datasets/2018/ on 4/16/2019. 
+
+There are 224 variables in this data set, but only a subset will be used in this problem set. For this problem set, the outcome of interest will be the LIFE variable, which was presented to respondents like so: 
+
+"In general, would you say life in America today is better, worse or about the same as it was 50 years ago for people like you?"
+  
+Possible responses included: 
+
+1 = Better today
+
+2 = Worse today
+
+3 = About the same as it was 50 years ago
+
+-1 = Refused
+
+
+# Preamble to Questions 2-6 - Read this before starting on Question 2. 
+
+Using the data contained in "pew", you will fit three logistic regression models using the LIFE variable as the outcome. 
+
+Model 1: Include income as a continuous predictor** and gender as a categorical predictor. 
+
+Model 2: In addition to the predictors in Model 1, include ethnicity and education as categorical predictors.
+
+Model 3: In addition to the predictors in Model 2, include the ideology variable. 
+
+** I wrote an aside about this variable. You do *not* have to read it, but if you want to, scroll to the end of the document to find it. 
+
+# Question 2 - 5 points (A-F)
+
+First, you will need to process the data. The Pew data is stored in an RData file, so the first line loads the RData file into memory. The second line creates a data set called "pew" that contains just the variables we'll use in this problem set. Run the code chunk and continue. 
+
+```{r}
+load("pew_data.RData")
+pew<-dplyr::select(dat,PPINCIMP,PPGENDER,PPETHM,IDEO,PPEDUCAT,LIFE)
+table(pew$LIFE, exclude = NULL)
+```
+
+Next, have a look at each variable in the data set. The RData format allowed for metadata about variables to be preserved along with the data itself. In the code chunk below, each variable has three lines of code associated with it. The first displays the text of the question, the second displays the set of potential responses, and the third displays the number of respondents that gave each response. Once you've reviewed the output, answer the six questions below.
+
+```{r}
+attributes(pew$LIFE)$label # LIFE
+attributes(pew$LIFE)$labels
+table(pew$LIFE, exclude = NULL)
+
+attributes(pew$PPINCIMP)$label #income
+attributes(pew$PPINCIMP)$labels 
+table(pew$PPINCIMP, exclude = NULL)
+
+attributes(pew$PPGENDER)$label #gender
+attributes(pew$PPGENDER)$labels 
+table(pew$PPGENDER, exclude = NULL)
+
+attributes(pew$PPETHM)$label #ethnicity
+attributes(pew$PPETHM)$labels 
+table(pew$PPETHM, exclude = NULL)
+
+attributes(pew$IDEO)$label #ideology
+attributes(pew$IDEO)$labels 
+table(pew$IDEO, exclude = NULL)
+
+attributes(pew$PPEDUCAT)$label #education
+attributes(pew$PPEDUCAT)$labels 
+table(pew$PPEDUCAT, exclude = NULL)
+```
+
+A) How many people's response was "Refused", "Not asked", or "NA" for the LIFE variable?
+
+Your answer here: Refused (-1): 18 respondents.
+
+B) How many people's response was "Refused", "Not asked", or "NA" for the PPINCIMP variable?
+
+Your answer here: Refused (-1): 66 respondents, Not asked (-2): 31 respondents, Total = 66 + 31 = 97 respondents.
+
+C) How many people's response was "Refused", "Not asked", or "NA" for the PPGENDER variable?
+
+Your answer here: Refused (-1): 0 respondents, Not asked (-2): 0 respondents, Total 0 respondents.
+
+D) How many people's response was "Refused", "Not asked", or "NA" for the PPETHM variable?
+
+Your answer here: Refused (-1): 392 respondents, Not asked (-2): 2862 respondents, Total = 392 + 2862 = 3254 respondents.
+
+E) How many people's response was "Refused", "Not asked", or "NA" for the IDEO variable?
+
+Your answer here: Refused (-1): 116 respondents.
+
+F) How many people's response was "Refused", "Not asked", or "NA" for the PPEDUCAT variable?
+
+Your answer here: Refused (-1): 303 respondents, Not asked (-2): 1130 respondents, Total = 303 + 1130 = 1433 respondents.
+
+
+# Question 3 - 5 points (A-C)
+
+Be sure to have completed Question 2 before beginning this question. 
+
+You'll conduct what's called a "complete cases" analysis, where an analysis is conducted only on cases that have information for all variables used in the analysis. There are some situations were this is appropriate and others where other ways of handling missing data should be used (for more information, see http://galton.uchicago.edu/~eichler/stat24600/Admin/MissingDataReview.pdf). For the purposes of this problem set, we'll assume that this is a situation where complete cases analysis is appropriate. 
+
+Use the code chunk below to drop all rows that have one or more instances of "Refused", "Not asked", or "NA" in the six variables in the pew data set. You'll do this by first making a copy of the pew data set, then dropping cases from the copy; this will make it easier to check your work. Once you've done this, answer the question below.
+
+```{r}
+# Code to drop all observations with one or more "Refused", "Not asked", or "NA" in any of the six variables in the pew.complete data set. 
+pew.complete <- pew[complete.cases(pew), ]
+nrow(pew.complete)
+```
+
+A) How many rows remain in your data set once you've dropped all cases with at least one "Refused", "Not asked", or NA? 
+
+Your answer here: 4024 rows remain in the pew.complete data set after dropping incomplete cases.
+
+Now, use the table() function to display the counts of the responses for all six variables to verify that none of these responses remain and answer the question below:
+
+```{r}
+# Code to display counts of the responses of the six variables here (remember, use pew.complete as the data set)
+table(pew.complete$LIFE)
+```
+
+B) Looking at the LIFE variable in the pew.complete data set, how many people said that life was "Worse today"?
+
+Your answer here: 1900 people said that life was "Worse today" (coded as 2 in the data)
+
+C) Again looking at the LIFE variable in the pew.complete data set, how many people said that life was either "Better today" or "About the same"?
+
+Your answer here: Better today (coded as 1): 1596 people, About the same (coded as 3): 510 people. So, 2106 people in the data set said that life was either "Better today" or "About the same."
+
+
+# Question 4 - 10 points
+
+Be sure to complete Question 3 before starting this one.
+
+Now that you've dropped the incomplete cases, we can move on to analysis. Use the pew.complete data set. First, you will set up your outcome variable. Re-code the LIFE variable such that "Worse today" is equal to one and "Better today"/"About the same" are equal to 0. Be sure to display the frequencies of the recoded variable. 
+
+```{r}
+# Code to re-code outcome
+pew.complete$worse <- ifelse(pew.complete$LIFE == 2, 1, 0)
+# Don't forget to display a table showing the frequencies of the re-coded outcome
+table(pew.complete$worse, exclude = NULL)
+```
+
+Next, check that all six variables are of the appropriate type. Income should be numeric- or integer-type variables, and gender, ethnicity, ideology, education category, and the re-coded life variable should be factor-type variables. Check that you've done this correctly by using the str() function.
+
+```{r}
+# Code to set variables to their appropriate types
+pew.complete$income <- as.numeric(pew.complete$PPINCIMP)
+pew.complete$gender <- factor(pew.complete$PPGENDER)
+pew.complete$eth <- factor(pew.complete$PPETHM)
+pew.complete$ideo <- factor(pew.complete$IDEO)
+pew.complete$edu <- factor(pew.complete$PPEDUCAT)
+pew.complete$worse <- factor(pew.complete$worse)
+# Display the variable types using the str() function
+str(pew.complete)
+```
+
+Finally, you will fit three logistic regression models using the re-coded LIFE variable and display the results:
+
+Model 1: Include income as a continuous predictor and gender as a categorical predictor. 
+
+```{r}
+Model.1 <- glm(worse ~ income + gender, data = pew.complete, family = binomial)
+summary(Model.1)
+```
+
+Model 2: In addition to the predictors in Model 1, include ethnicity and education as categorical predictors.
+
+```{r}
+Model.2 <- glm(worse ~ income + gender + eth + edu, data = pew.complete, family = binomial)
+summary(Model.2)
+```
+
+Model 3: In addition to the predictors in Model 2, include the ideology variable.
+
+```{r}
+Model.3 <- glm(worse ~ income + gender + eth + edu + ideo, data = pew.complete, family = binomial)
+summary(Model.3)
+```
+
+# Question 5 - 10 points (A-C)
+
+Now that you've fit the three models, you will now conduct two nested model tests to determine the best of the three models. Once you've done so, answer the three questions below. Be sure to conduct likelihood ratio tests, not F-change tests. 
+
+Nested model test 1: Model 1 vs Model 2
+
+```{r}
+# Code to conduct a nested model test between Model 1 and Model 2 here
+lrtest(Model.1, Model.2)
+```
+
+Nested model test 2: Model 2 vs Model 3
+
+```{r}
+# Code to conduct a nested model test between Model 2 and Model 3 here
+lrtest(Model.2, Model.3)
+```
+
+A) Based on the results of the nested model test between Model 1 and Model 2, which would you choose?
+
+Your answer here: The likelihood ratio test between Model 1 and Model 2 shows a significant improvement in fit when moving to Model 2 (Chisq = 72.286, p < 0.001). Therefore, Model 2 is preferred over Model 1.
+
+B) Based on the results of the nested model test between Model 2 and Model 3, which would you choose?
+
+Your answer here: The likelihood ratio test between Model 2 and Model 3 shows a significant improvement in fit when moving to Model 3 (Chisq = 26.112, p < 0.001). Therefore, Model 3 is preferred over Model 2.
+
+C) Based on the results of the two nested model tests, which of the three models - Model 1, Model 2, or Model 3 - would you choose?
+
+Your answer here: Since both nested model tests show significant improvements in fit when moving to the next model, Model 3 is the best choice out of the three models based on the likelihood ratio tests.
+
+# Question 6 - 10 points (A-H)
+
+For the model you chose in Question 5, construct a confusion matrix comparing the actual 0/1 values for the re-coded LIFE variable and the predicted 0/1 values. For this question, do so manually (i.e., using the table() function) and not by using a package to do it for you (i.e., do not use confusionMatrix() from the caret package). Construct your confusion matrix such that the rows and columns are labeled; that is, it should be clear what the rows and columns represent without reading your code. Once you've done that, answer the four questions below.  
+
+First, display the counts of the *actual* rating of worse the predicted values and display a table of the predicted outcome and the actual outcome.
+
+```{r}
+# Code to display actual binary outcome counts - be sure this displays in your knitted document
+table(pew.complete$worse)
+```
+
+Next, compute the *binarized predictions* based on the model you chose.
+
+
+```{r}
+# Code to create and display predicted binary outcome counts - be sure the count displays in your knitted document
+# Compute predicted probabilities for the chosen model (Model 3 from Question 5)
+predicted_prob <- predict(Model.3, type = "response")
+# Convert probabilities into binary predictions (1 if prob >= 0.5, otherwise 0)
+predicted_binary <- ifelse(predicted_prob >= 0.5, 1, 0)
+# Display predicted binary outcome counts
+table(predicted_binary)
+```
+
+Next, create your confusion matrix using the table() function. Be sure to label the table axes. 
+```{r}
+# Create the confusion matrix comparing actual vs predicted values
+confusion.matrix <- table(Actual = pew.complete$worse, Predicted = predicted_binary)
+# Display confusion matrix with labels
+confusion.matrix
+```
+
+A) How many true positives did your model produce?
+
+Your answer here: True positives = 980.
+
+B) How many true negatives did your model produce?
+
+Your answer here: True negatives = 1373.
+
+C) How many false positives did your model produce?
+
+Your answer here: False positives = 751.
+
+D) How many false negatives did your model produce?
+
+Your answer here: False negatives = 920.
+
+
+Now that you've constructed your confusion matrix, use it to compute the four indices of model fit that we dicussed.
+```{r}
+# Code to compute accuracy
+accuracy <- (confusion.matrix[1,1] + confusion.matrix[2,2]) / sum(confusion.matrix)
+accuracy
+# Code to compute precision
+precision <- confusion.matrix[2,2] / (confusion.matrix[2,2] + confusion.matrix[1,2])
+precision
+# Code to compute recall
+recall <- confusion.matrix[2,2] / (confusion.matrix[2,2] + confusion.matrix[2,1])
+recall
+# Code to compute F1 score
+F1score <- 2 * (precision * recall) / (precision + recall)
+F1score
+```
+
+
+E) What is the *accuracy* of this model?
+
+Your answer here: 0.5847 (approximately 58.47% of the predictions were correct).
+
+F) What is the *precision* of this model?
+
+Your answer here: 0.5661 (approximately 56.61% of the predicted positive cases were true positives).
+
+G) What is the *recall* of this model?
+
+Your answer here: 0.5158 (approximately 51.58% of the actual positive cases were correctly identified).
+
+H) What is the *F1 score* of this model?
+
+Your answer here: 0.5398 (this value represents the harmonic mean of precision and recall, balancing the two metrics).
+
+
+------
+
+** Strictly speaking, this variable isn't continuous; rather, it's a 21-category variable. Having 20 dummy vectors to represent one variable in a model is unusual in practice. Survey researchers routinely ask about income in this way because many people, especially those who aren't salaried or who have multiple jobs or who belong in multi-income households, can have trouble giving an exact answer to a question about household income. The income categories are used to help the respondent approximate their income in a controlled fashion. 
+
+If you have the sample size to support it, one could indeed include 20 dummy codes in a model. If you wanted to test for the effect of income as a whole, you could easily do so using a nested model test. If you were more interested in the effect on the outcome as one goes up categories, though, the coefficients leave something to be desired. 
+
+So, what do you do when you don't want 20 dummy codes representing a single variable in a model for whatever reason? Generally, there are two options. The first is to re-categorize into fewer categories, which is a good option if you have new categories that make substantive sense. For example, if information about household size were available in this data set, I would consider dividing the lower bound of each category by the household size to determine to create a smaller set of categories that correspond to different cutoffs based on federal poverty limits (e.g., 100% FPL or less, 100.1%-200% FPL, >200.1% FPL). The downside is that arbitrary re-categorizations may be difficult to justify and difficult to make sense of in the context of the research question. The second option is to treat the variable as "roughly continuous" and include it in the model as a continuous predictor. The downside of this option is that the standard interpretation of the estimated coefficient doesn't hold, so a finding of significance for this variable would have to have a restrained interpretation.  
+
+You'll do the latter in this problem set, but it's not the only or even the best choice across situations. As usual, knowledge about the data and the research question will help you make justifiable choices. 
+
+
+# END.
