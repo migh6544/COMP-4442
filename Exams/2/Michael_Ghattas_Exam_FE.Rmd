@@ -1,0 +1,423 @@
+---
+title: "COMP 4442 Final Exam, Spring 2024"
+author: "Michael Ghattas"
+output: pdf_document
+---
+
+```{r setup, include=TRUE}
+knitr::opts_chunk$set(echo = TRUE)
+
+library(glmnet)
+library(MASS)
+library(survival)
+library(survminer)
+library(car)
+```
+
+There are four questions on this final, all of which have multiple parts. Please be sure to provide answers to all parts of each question. Each question has an associated .csv file, which you will load into memory at the beginning of the question. All of the included data sets are simulated, so any results should not be taken as evidence for or against the existence of anything in the real world. The data were simulated to minimize the ambiguity and messiness that typifies real data. If you feel that something is ambiguous in a way that impedes your ability to answer the questions, please let me know. 
+
+Almost there - you can do it! 
+
+## Question 1 - Train/validate/test (30 points total)
+
+For this question, a 400 observation data set was split such that 50% of the data was assigned to a training set, 25% was assigned to a validation set, and the remaining 25% was assigned to a test set. The outcome variable is y, which is contained in all three data sets, and is continuous. The predictor variables, also contained in all three data sets, are all continuous.
+
+Run the code chunk below to load the data into memory before beginning your work on this question. 
+
+```{r}
+# Load data
+q1.train <- read.csv("q1_train.csv", header=TRUE, sep=",")
+q1.valid <- read.csv("q1_valid.csv", header=TRUE, sep=",")
+q1.test <- read.csv("q1_test.csv", header=TRUE, sep=",")
+
+# Check structures
+str(q1.train)
+str(q1.valid)
+str(q1.test)
+```
+
+# Q1, Part 1 - Generating candidate models on the training set (15 points)
+
+You will generate four candidate models: a model obtained through forward selection, a model obtained through backward selection, a cross-validated ridge regression model, and a cross-validated lasso regression model. For both cross-validated models, use the model associated with lambda.1se. You will fit all of these models to the training data (q1.train), using y as the outcome and x1-x9 as the predictors. Please do not include interactions or squares in your pool of potential predictors. Once you have done this, answer the four questions below.
+
+Forward selection: 
+```{r}
+# Set up for forward selection
+model.null <- lm(y ~ 1, data = q1.train)
+model.full <- lm(y ~ ., data = q1.train)
+model.forward <- step(model.null, scope = formula(model.full), direction = "forward", trace = 1)
+summary(model.forward)
+```
+
+Backward selection: 
+```{r}
+# Set up for backward selection
+model.backward <- step(model.full, direction = "backward", trace = 1)
+summary(model.backward)
+```
+
+Cross-validated ridge regression (lambda.1se); please use the provided random seed
+```{r}
+# Ridge regression
+x.train <- model.matrix(y ~ ., data = q1.train)[, -1]
+y.train <- q1.train$y
+
+set.seed(202211)
+cv.ridge <- cv.glmnet(x.train, y.train, alpha = 0)
+lambda.ridge <- cv.ridge$lambda.1se
+coef(cv.ridge, s = lambda.ridge)
+```
+
+Cross-validated lasso regression (lambda.1se); please use the provided random seed
+```{r}
+# Lasso regression
+set.seed(202211)
+cv.lasso <- cv.glmnet(x.train, y.train, alpha = 1)
+lambda.lasso <- cv.lasso$lambda.1se
+coef(cv.lasso, s = lambda.lasso)
+```
+
+A) What predictors are included in the model selected by forward selection?
+
+Your answer here: x7, x2, x6, x9
+
+B) What predictors are included in the model selected by backward selection?
+
+Your answer here: x2, x6, x7, x9
+
+C) What predictors are included in the cross-validated ridge model (lambda.1se)?
+
+Your answer here: X, x1, x2, x3, x4, x5, x6, x7, x8, x9 (i.e. All)
+
+D) What predictors are included in the cross-validated lasso model (lambda.1se)?
+
+Your answer here: x2, x6, x7
+
+
+# Q1, Part 2 - Fitting candidate models on the validation set and choosing a model (10 points)
+
+Now, use the validation data (q1.valid) to generate new predictions for the four candidate models obtained in the previous part. Use these to compute the mean squared prediction error to evaluate how well each candidate model (which was estimated using training data) predicts the y's in the validation data set. Once you have done this, answer the three questions below.
+
+Forward model:
+```{r}
+# Forward model
+pred.forward <- predict(model.forward, newdata = q1.valid)
+mspe.forward.valid <- mean((q1.valid$y - pred.forward)^2)
+mspe.forward.valid
+```
+
+Backward model:
+```{r}
+# Backward model
+pred.backward <- predict(model.backward, newdata = q1.valid)
+mspe.backward.valid <- mean((q1.valid$y - pred.backward)^2)
+mspe.backward.valid
+```
+
+Cross-validated ridge model (lambda.1se):
+```{r}
+# Ridge regression
+pred.ridge <- predict(cv.ridge, newx = model.matrix(y ~ ., data = q1.valid)[, -1], s = lambda.ridge)
+mspe.ridge.valid <- mean((q1.valid$y - pred.ridge)^2)
+mspe.ridge.valid
+```
+
+Cross-validated lasso model (lambda.1se):
+```{r}
+# Lasso regression
+pred.lasso <- predict(cv.lasso, newx = model.matrix(y ~ ., data = q1.valid)[, -1], s = lambda.lasso)
+mspe.lasso.valid <- mean((q1.valid$y - pred.lasso)^2)
+mspe.lasso.valid
+```
+
+A) List the mean squared prediction error for each of your candidate models here:
+
+Forward model mean squared prediction error: 24.019
+Backward model mean squared prediction error: 24.019
+Ridge model mean squared prediction error: 25.369
+Lasso model mean squared prediction error: 26.964
+
+B) Based on the mean squared prediction error, which model do you choose? 
+
+Your answer here: The forward and backward models both have the lowest MSPE of 24.01926. Since these models yield the same performance on the validation set, either can be chosen.
+
+C) Display the coefficient values for the model you chose here: Proceeding with forward model to avoid duplication of work.
+
+```{r}
+# Display coefficients for the chosen forward model
+summary(model.forward)$coefficients
+```
+
+
+# Q1, Part 3 - Testing the final model on the test set (5 points)
+
+Now that you've chosen a model, you will test this model's generalizability by generating new predictions for the final model chosen in the previous part. Use these new predictions to compute the mean squared prediction error to evaluate how well the final model (which was estimated using training data) predicts the y's in the test data set. Once you've done this, answer the question below:
+
+```{r}
+# Test the final model
+pred.test <- predict(model.forward, newdata = q1.test)  # Replace with the chosen model
+mspe.test <- mean((q1.test$y - pred.test)^2)
+mspe.test
+```
+
+A) What is the mean squared prediction error for the final model making predictions on the test set?
+
+Your answer here: 30.40355
+
+
+## Question 2 - Evaluating the generalizability of a "shrunk" logistic regression model (30 points total)
+
+For this question, a different 400-observation data set was split such that 70% of it was assigned to a training set and the remaining 30% was assigned to a test set. The outcome variable is y, which is binary. The predictor variables, V1 - V10, are all continuous. 
+
+Run the code chunk below to load the data into memory before beginning your work on this question.
+
+```{r}
+# Load data
+log.train <- read.csv("logistic_train.csv", header=TRUE, sep=",")
+log.test <- read.csv("logistic_test.csv", header=TRUE, sep=",")
+
+# Note: y is an int type; don't change this for this question
+str(log.train) 
+str(log.test)
+```
+
+# Q2, Part 1 - Fitting the "shrunk" logistic model (5 points)
+
+I fitted a penalized logistic regression model to the training data; that is, I applied a method of coefficient shrinkage to a logistic regression model fitted to the training. Run the code chunk below to fit this model and answer the two questions below.
+
+```{r}
+x.train.mat <- model.matrix(y ~ ., data = log.train)[, -1]
+y.train.vec <- log.train$y
+
+set.seed(12345)
+cvfit.log <- cv.glmnet(x = x.train.mat, y = y.train.vec, family = "binomial", alpha = 1)
+coef(cvfit.log, s = "lambda.min")
+```
+
+A) What type of penalized/"shrunk" logistic regression model did I fit to the training data? *Be specific.*
+
+Your answer here: The model fitted is a Lasso (Least Absolute Shrinkage and Selection Operator) logistic regression model. This type of penalized regression uses the alpha = 1 parameter in cv.glmnet to apply L1 regularization, which enforces sparsity in the model by setting some coefficients to exactly zero.
+
+B) Which predictors (V1 - V10) are included the lambda.min penalized/"shrunk" logistic regression model? Put differently, which predictor coefficients were NOT set to zero in the lambda.min model? 
+
+Your answer here (list the included predictors): V1, V4, V7, V8, V10
+
+
+# Q2, Part 2 - Obtaining new predictions from test data (5 points)
+
+In this section, you will generate new predictions of Y based on the values of the predictors in the test set. That is, you will use the predictor values from log.test to predict new y values. 
+
+```{r}
+x.test.mat <- model.matrix(y ~ ., data = log.test)[, -1]
+y.test.pred <- predict(cvfit.log, newx = x.test.mat, s = "lambda.min", type = "class")
+```
+
+Next, display the counts of both the predicted y values and the actual y values in log.test. Remember that these are binary variables. Hint: this will help you check your work in the next part. 
+
+```{r}
+# Counts for predicted y's & Counts for actual y's
+table(y.test.pred)
+table(log.test$y)
+```
+
+
+# Q2, Part 3 - Evaluating the generalizability on the test set (20 points)
+
+For this part, you will create a confusion matrix and compute the four model indices we discussed in class: accuracy, precision, recall, and F1 score. Use the table() function to create the confusion matrix and be sure to display it in the knitted document. Write your code for this below and answer the two questions below.
+
+```{r}
+## Code for creating and displaying the confusion matrix
+confusion.matrix <- table(Predicted = y.test.pred, Actual = log.test$y)
+confusion.matrix
+```
+
+```{r}
+## Code for computing and displaying the model indices 
+accuracy <- sum(diag(confusion.matrix)) / sum(confusion.matrix)
+precision <- confusion.matrix[2, 2] / sum(confusion.matrix[2, ])
+recall <- confusion.matrix[2, 2] / sum(confusion.matrix[, 2])
+F1 <- 2 * (precision * recall) / (precision + recall)
+
+accuracy
+precision
+recall
+F1
+```
+
+A) Fill in the values of your confusion matrix. Note that you should also have the confusion matrix displayed as part of the output from your code. 
+
+    True positives (your answer here): 41
+    False positives (your answer here): 20
+    True negatives (your answer here): 27
+    False negatives (your answer here): 12
+
+B) Fill in the values of your model indices. Again, be sure that you also have these displayed as part of the output from your code. 
+
+    Accuracy: 0.68
+    Precision: 0.672
+    Recall: 0.773
+    F1 score: 0.719
+
+
+## Question 3 - Modeling count data (20 points total)
+
+Alyssa analyzed workplace injury incidents obtained from a shipping warehouse. She sampled 45 employee records at random and recorded the number of workplace injury reports in the employee's file in the past five years ("reports") and how many years since the employee underwent safety training certification ("years"). 
+
+Run the code chunk below to load the data into memory before beginning your work on this question. 
+
+```{r}
+# Load data
+injury <- read.csv("injury.csv", header=TRUE, sep=",")
+str(injury)
+```
+
+# Q3, Part 1 - Describing the data (10 points)
+
+Before starting the analysis, Alyssa conducted some descriptive analyses to present alongside her modeling work. Please recreate the descriptive analyses she conducted by answering the following three questions. Any code you use to answer the questions should go into the chunk below:
+
+```{r}
+# Zero or one injury reports
+percent_zero_one <- sum(injury$reports <= 1, na.rm = TRUE) / nrow(injury) * 100
+
+# Median years for 6 or more injury reports
+median_years_6plus <- median(injury$years[injury$reports >= 6], na.rm = TRUE)
+
+# Median reports for safety certification < 5 years
+median_reports_5years <- median(injury$reports[injury$years < 5], na.rm = TRUE)
+
+percent_zero_one
+median_years_6plus
+median_reports_5years
+```
+
+A) What percentage of the sampled employees had zero or one injury report in their files? 
+
+Your answer here: 7.67% 
+
+B) Among workers who had 6 or more injury reports, what was the median number of years since their most recent safety certification?
+
+Your answer here: 8.5 years.
+
+C) Among workers who had a safety certification that was less than 5 years old, what was the median number of injury reports?
+
+Your answer here: 1
+
+
+# Q3, Part 2 - Fitting a quasipoisson model (10 points)
+
+After some exploratory modeling, Alyssa determined that a *quasipoisson* model was the most appropriate model for these data. 
+
+First, please re-create her analysis by fitting a quasipoisson model to the data, using reports as the outcome and years as the predictor. 
+
+```{r}
+model.quasipoisson <- glm(reports ~ years, family = quasipoisson(), data = injury)
+summary(model.quasipoisson)
+```
+
+Next, answer the following three questions about the analysis:
+
+A) Was the number of years since safety training a significant predictor of the number of injury reports?
+
+Your answer here (yes/no): Yes, the number of years since safety training is a significant predictor of the number of injury reports. The p-value for the years variable is much smaller than the standard significance level of 0.05.
+
+B) Based on the results, does the predicted count of workplace injury reports *increase* or *decrease* as the number of years since an employees most recent safety certification increases? How do you know? 
+
+Your answer here: The predicted count of workplace injury reports increases as the number of years since the most recent safety certification increases. This is evident from the positive coefficient for the years variable (0.23313), indicating that for each additional year since certification, the expected count of injury reports increases on average.
+
+C) Based on your answer to the previous question, do you think Alyssa recommended greater frequency of safety certification or a lower frequency of safety certification?
+
+Your answer here (higher or lower): Higher. Alyssa likely recommended greater frequency of safety certification. Since the model shows that injury reports increase with more years since the last certification, reducing the time between certifications could help mitigate the risk of workplace injuries.
+
+
+## Question 4 - Modeling time-to-event data (20 points total)
+
+As part of receving services at a community mental health clinic, a prospective client must first submit a completed intake form; upon approval, the client may then schedule a first visit with a provider. Ahmed designed an intervention study to determine if different follow-up schedules ("group") decrease the amount of time in between the client's approval and the client's first appointment ("first_visit", in decimal days). Clients in Group A, which was the current standard for client follow-up at the time, received a reminder via text message to schedule their first appointment 14 days after approval. Clients in Group B received reminders 14 and 21 days after approval, and clients in Group C received reminders 7 and 14 days after approval. If the client saw a provider within 30 days of approval, "status" is equal to 1; otherwise, it's equal to zero. 
+
+Run the code chunk below to load the data into memory before beginning your work on this question. 
+
+```{r}
+# Load data
+intake <- read.csv("enrollment.csv", header=TRUE, sep=",")
+str(intake)
+```
+
+# Q4, Part 1 - Kaplan-Meier curves and censoring (10 points)
+
+Ahmed started his analysis by fitting Kaplan-Meier curves for each group, which can be seen by running the code chunk below. Please examine this visualization and answer the three questions below. 
+
+```{r}
+# Kaplan-Meier Curves
+fit <- survfit(Surv(first_visit, status) ~ group, data = intake)
+ggsurvplot(fit)
+```
+
+A) Based on what you see in the Kaplan-Meier curves, which group had the most censored observations?
+
+Your answer here: Group A appears to have the most censored observations because its survival probability line flattens out earlier compared to groups B and C, indicating that fewer events (first visits) were observed within the 30-day window.
+
+B) The line for group C ends somewhere between 20 and 30 days. What does this mean for members of group C in terms of their time-to-first visit?
+
+Your answer here: The Kaplan-Meier curve for group C ending between 20 and 30 days indicates that most participants in group C had their first visits within that timeframe. After the curve ends, no further events (first visits) were observed, implying the remaining participants were censored by day 30.
+
+C) During the design phase, Ahmed took steps to prevent left censoring from occurring. If this had happened and a client's status was left-censored, what would that have meant with regard to their time-to-first visit? 
+
+Your answer here: Left censoring would mean that the exact time of the first visit occurred before the study began (i.e. before Ahmed began observing clients). Preventing left censoring ensures that the time-to-first visit starts at the point of approval and is fully observable within the study period.
+
+
+# Q4, Part 2: Fitting parametric survival models (10 points)
+
+Next, Ahmed fitted two accelerated failure time (AFT) models: an exponential AFT model and a Weibull AFT model. Run the code chunk below and review the results of the two analyses.
+
+```{r}
+# Parametric Survival Models
+model.weib <- survreg(Surv(first_visit, status) ~ group, dist = "weibull", data = intake)
+model.exp <- survreg(Surv(first_visit, status) ~ group, dist = "exponential", data = intake)
+summary(model.weib)
+summary(model.exp)
+```
+
+He then created a Kaplan-Meier plot with overlaid cumulative distribution curves for both models. The orange cumulative distribution curves are derived from the fitted Weibull AFT model, and the blue curves are from the fitted exponential AFT model. Run the code chunk below to view these and answer the four questions below. 
+
+```{r}
+# Overlay Kaplan-Meier with AFT models
+plot(survfit(Surv(first_visit,status) ~ group,
+               data = intake),lty=c(1,3,5),xlab="Survival Probability")
+legend("bottomleft", c("a", "b","c"), lty = c(1,3,5))
+points(seq(0,30,by=.2),
+       1-psurvreg(seq(0,30,by=.2),mean=model.weib$coefficients[1],
+                  scale=model.weib$scale),type="l",lty=1,col="orange")
+points(seq(0,30,by=.2),
+       1-pexp(seq(0,30,by=.2),rate=1/exp(model.exp$coefficients[1])),
+       type="l", lty=1,col="blue")
+points(seq(0,30,by=.2),
+       1-psurvreg(seq(0,30,by=.2),mean=sum(model.weib$coefficients[c(1,2)]),
+                  scale=model.weib$scale),type="l",lty=3,col="orange")
+points(seq(0,30,by=.2),
+       1-psurvreg(seq(0,30,by=.2),mean=sum(model.exp$coefficients[c(1,2)]),
+                  distribution = "exponential"),type="l",lty=3,col="blue")
+points(seq(0,30,by=.2),
+      1-psurvreg(seq(0,30,by=.2),mean=sum(model.weib$coefficients[c(1,3)]),scale=model.weib$scale),
+       type="l",lty=5,col="orange")
+points(seq(0,30,by=.2),
+       1-psurvreg(seq(0,30,by=.2),mean=sum(model.exp$coefficients[c(1,3)]),
+                  distribution = "exponential"),type="l",lty=5,col="blue")
+```
+
+D) Based on the visualization, which of the two models - exponential AFT (blue) or Weibull AFT (orange) - appear to best model the time-to-first visit for the different intervention groups?
+
+Your answer here (exponential or Weibull): The Weibull AFT model (orange) appears to better model the time-to-first visit for the different intervention groups. The orange cumulative distribution curves from the Weibull model align more closely with the Kaplan-Meier survival curves, especially in capturing the differences in survival probabilities across time for all three groups. The exponential model (blue) oversimplifies the survival trends, resulting in poorer fit.
+
+E) Look at the model output for the model you chose in the previous question. Is there evidence of a difference between Group A and Group B?
+
+Your answer here (yes/no): Yes, there is evidence of a difference between Group A and Group B based on the Weibull AFT model output. The coefficient for groupb is statistically significant. This indicates that the follow-up schedule for Group B (Days 14 and 21) significantly impacts the time-to-first visit compared to Group A (Day 14 only). 
+
+F) From this same model output, is there evidence of a difference between Group A and Group C?
+
+Your answer here (yes/no): Yes, there is evidence of a difference between Group A and Group C based on the Weibull AFT model output. The coefficient for groupc is statistically significant. This indicates that the follow-up schedule for Group C (Days 7 and 14) significantly impacts the time-to-first visit compared to Group A (Day 14 only).
+
+G) Considering the results shown in both parts 1 and 2 of this question, which follow-up schedule - Day 14 only, Days 7 and 14, or Days 14 and 21 - do you think Ahmed recommended to the clinic? Please note that stating the group letter alone here won't earn full credit; you must explicitly reference the specific intervention the group experienced. 
+
+Your answer here: Ahmed likely recommended the Days 7 and 14 follow-up schedule (Group C). Based on both the Kaplan-Meier survival curves and the Weibull AFT model output, Group C exhibited the shortest time-to-first visit, with a significant reduction compared to Groups A and B. This intervention (reminders at Days 7 and 14) effectively increases the likelihood of clients scheduling their first visit sooner, thus achieving the goal of reducing time-to-event.
+
+
+## End.

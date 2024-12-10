@@ -1,0 +1,94 @@
+---
+title: "Michael_Ghattas_WP9"
+author: "Michael Ghattas"
+date: "`r Sys.Date()`"
+output: pdf_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+library(tidyverse)
+library(survival)
+library(survminer)
+library(tidyverse)
+library(ggplot2)
+```
+
+# Exercise:
+
+1. Fit a Cox proportional hazard model to the data set with the predictors sex, and wt.loss (as main effects).  
+2. Interpret the regression coefficients for the model.  
+3. Predict the survival of a female who has wt.loss = 20.  
+4. Assess the model assumptions
+
+```{r}
+attach(lung)
+lung <- lung |>
+  filter(!is.na(ph.ecog)) |>
+  mutate(
+    ph.ecog = factor(
+      ph.ecog,
+      levels = c(0, 1, 2, 3, 4),
+      labels = c("Asymptomatic", "Ambulatory", "In bed <50%", "In bed >50%", "Bedridden")),
+    ph.ecog = fct_drop(ph.ecog),
+    ph.ecog = fct_lump_n(ph.ecog, n = 2, other_level = "Bedridden"),
+    sex = factor(sex, levels = c(1, 2), labels = c("Male", "Female")),
+    patient_id = row_number()
+  )
+
+head(lung)
+```
+
+### 1. Fit a Cox proportional hazard model to the data set with the predictors sex, and wt.loss (as main effects).
+
+```{r ExerciseCox}
+cox_lung <- coxph(Surv(time, status) ~ sex + wt.loss, data = lung)
+summary(cox_lung)
+```
+### 2. Interpret the regression coefficients for the model.  
+
+Interpretation:
+
+  - The negative coefficient indicates that being female is associated with a lower hazard (risk of death) compared to being male.
+  - The hazard ratio of 0.5865 means that females have approximately 41.35% lower hazard than males, holding wt.loss constant.
+  - Since the p-value is less than 0.01, this effect is statistically significant.
+  - The coefficient is close to zero, and the hazard ratio is approximately 1, suggesting no significant effect of wt.loss on the hazard.
+  - The p-value is very high, indicating that variations in wt.loss are not significantly associated with the hazard rate in this model.
+  
+### 3. Predict the survival of a female who has wt.loss = 20. 
+
+```{r}
+# Define the new data point
+new_data <- data.frame(sex = "Female", wt.loss = 20)
+
+# Obtain the survival curve
+surv_pred <- survfit(cox_lung, newdata = new_data)
+
+# Display the survival probabilities at specific times
+summary(surv_pred, times = c(100, 200, 300, 400, 500))
+```
+
+Interpretation:
+
+  - Survival Probability at Time 100 Days: There's a 91.2% chance that the patient will survive beyond 100 days.
+  - At 200 Days: The survival probability decreases to 78.3%.
+  - At 300 Days: It further decreases to 65.1%.
+  - At 400 Days: The probability is 52.1%.
+  - At 500 Days: There's a 43.4% chance of surviving beyond 500 days.
+  - The standard error and 95% confidence intervals provide information about the precision of these estimates.
+
+### 4. Assess the model assumptions
+
+```{r}
+# Test proportional hazards assumption
+ph_test <- cox.zph(cox_lung)
+print(ph_test)
+```
+Interpretation:
+
+  - Since the p-value is greater than 0.05, we fail to reject the null hypothesis that the effect of sex is proportional over time. Thus, the PH assumption holds for sex.
+  - With a high p-value, there's no evidence against the PH assumption for wt.loss.
+  - The global test also suggests that the PH assumption holds for the model overall.
+  - The test results indicate that the PH assumption is not violated for either of the predictors or the model as a whole.
+
+# END.

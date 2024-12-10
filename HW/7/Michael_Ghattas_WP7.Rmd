@@ -1,0 +1,83 @@
+---
+output:
+  pdf_document: default
+  html_document: default
+---
+title: "Michael_Ghattas_WP7"
+author: "Michael Ghattas"
+date: "`r Sys.Date()`"
+output: pdf_document
+---
+
+# Environment Setup
+
+```{r setup, include=FALSE}
+# Set up the environment and suppress echo for cleaner output
+knitr::opts_chunk$set(echo = TRUE)
+# Load necessary libraries
+library(mlbench)
+library(glmnet)
+```
+
+# Load and Prepare Data
+
+```{r}
+# Load datasets: BreastCancer for classification and BostonHousing for regression
+data("BreastCancer", package = "mlbench")
+data("BostonHousing", package = "mlbench")
+
+# Remove any rows with missing values and unnecessary ID column in BreastCancer data
+BreastCancer <- na.omit(BreastCancer)[,-c(1)]
+```
+
+# Split BreastCancer Data into Train and Test Sets
+
+```{r}
+set.seed(1)
+
+# Split data: 70% for training, 30% for testing
+index <- sample(1:nrow(BreastCancer), 0.7 * nrow(BreastCancer), replace = FALSE)
+train <- BreastCancer[index,]
+test <- BreastCancer[-index,]
+
+# Prepare matrices for ridge logistic regression
+X.train <- model.matrix(Class ~ ., data = train)[,-1]  # Training predictors 
+y.train <- as.numeric(train$Class) - 1  # Convert Class to binary numeric (0/1)
+
+X.test <- model.matrix(Class ~ ., data = test)[,-1]   # Test predictors
+y.test <- as.numeric(test$Class) - 1  # Convert Class to binary numeric (0/1)
+```
+
+# Ridge Logistic Regression with Cross-Validation on BreastCancer Data
+
+```{r}
+# Perform cross-validated ridge regression (alpha = 0) with logistic family
+cvfit.ridge <- cv.glmnet(x = X.train, y = y.train, alpha = 0, family = 'binomial')
+
+# Display lambda that minimizes cross-validation error and corresponding coefficients
+cvfit.ridge$lambda.min
+coef(cvfit.ridge, s = "lambda.min")
+```
+
+# Prepare BostonHousing Data for Lasso Regression
+
+```{r}
+# Set up design matrix for BostonHousing regression (exclude intercept) and response vector
+X <- model.matrix(medv ~ ., data = BostonHousing)[,-1]
+y <- BostonHousing$medv
+```
+
+# Lasso Regression with Cross-Validation on BostonHousing Data
+
+```{r}
+set.seed(202211) 
+
+# Perform cross-validated lasso regression (alpha = 1)
+cvfit.house.lasso <- cv.glmnet(x = X, y = y, alpha = 1)
+# Display lambda that minimizes cross-validation error
+cvfit.house.lasso$lambda.min
+
+# Display the coefficients associated with lambda.min
+coef(cvfit.house.lasso, s = "lambda.min")
+```
+

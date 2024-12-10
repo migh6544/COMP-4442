@@ -1,0 +1,382 @@
+---
+title: "Problem Set 6, Winter 2024"
+author: "Michael Ghattas"
+output: pdf_document
+---
+
+# START:
+
+```{r setup, include=TRUE}
+knitr::opts_chunk$set(echo = TRUE)
+
+# Setup Environment
+library(tidyverse)
+library(mlbench)
+library(glmnet)
+```
+
+CONTEXT: Pew Research Center data
+The data in "pew_data.RData" comes from the Pew Research Center, an organization that conducts nationally-representative public opinion polls on a variety of political and social topics. Dr. Durso constructed this data set from the 2017 Pew Research Center Science and NewsSurvey, downloaded from https://www.journalism.org/datasets/2018/ on 4/16/2019. 
+
+There are 224 variables in this data set, but only a subset will be used in this problem set. For this problem set, the outcome of interest will be the LIFE variable, which was presented to respondents like so: 
+"In general, would you say life in America today is better, worse or about the same as it was 50 years ago for people like you?"
+  
+Possible responses included: 
+1 = Better today
+2 = Worse today
+3 = About the same as it was 50 years ago
+-1 = Refused
+
+## Question 1 - Data processing - 5 points
+
+You will use the Pew data set again for these questions, but you will not conduct a full complete cases analysis this time. Instead, you'll conduct a "complete outcomes" analysis, where only observations containing a valid response to the outcome variable are included. The data for this question will be stored in a new data set called "pew2". You will need to have your directory set to where the data set is on your computer, so be sure to do that before running the code chunk below. 
+
+```{r}
+load("pew_data.RData")
+# Select only relevant variables for analysis
+pew2 <- dplyr::select(dat, PPINCIMP, PPGENDER, PPETHM, IDEO, PPEDUCAT, LIFE)
+```
+
+You will again binarize the LIFE outcome such that a value of 1 means that the participant responded that life in America is worse today than 50 years ago (LIFE=2) and a value of 0 contains all other resposnes (LIFE=1 or LIFE=3).
+Check to see how people respodned to the LIFE variable before you recode this and answer the question below the code chunk. 
+
+```{r}
+# Display LIFE variable's attributes and response frequencies
+attributes(pew2$LIFE)$label
+attributes(pew2$LIFE)$labels
+table(pew2$LIFE, exclude = NULL)
+```
+
+A) How many people's response was "Refused", "Not asked", or "NA" for the LIFE variable?
+Your answer here: 18. This corresponds to the -1 value in the table output, which represents the "Refused" responses.
+
+Use the code chunk below to drop any observations with a response of "Refused", "Not asked", or "NA" for the LIFE variable. Save the resulting data set as pew.life and answer the question below the code chunk
+
+```{r}
+# Drop observations where LIFE is -1 (Refused) or NA
+pew.life <- pew2 %>% filter(LIFE != -1 & !is.na(LIFE))
+
+# Count the rows in the complete outcomes data set
+nrow(pew.life)
+```
+
+B) How many rows remain in your data set once you've dropped all observations where the response to the LIFE variable was "Refused", "Not asked", or NA? 
+Your answer here: 4006. This is the number of rows remaining in pew.life after filtering out "Refused" and NA responses in the LIFE variable.
+
+Re-code the LIFE variable such that "Worse today" is equal to one and "Better today"/"About the same" are equal to 0. Be sure to display the frequencies of the recoded variable. 
+
+```{r}
+# Re-code LIFE variable: 1 for "Worse today", 0 for "Better today" and "About the same"
+pew.life$worse <- ifelse(pew.life$LIFE == 2, 1, 0)
+
+# Display the frequencies of the recoded outcome
+table(pew.life$worse, exclude = NULL)
+```
+
+C) Per the table of your recoded variable ("worse"), does the number of 1s in this variable match the number of people who responded "worse today" in the original LIFE variable? (Hint: if no, check in with me about it):
+Your answer here: Yes, the number of 1s in the recoded "worse" variable is 1900, which matches the count of people who responded "Worse today" (LIFE = 2) in the original LIFE variable.
+
+Finally, check that all six variables are of the appropriate type. Income should be a numeric- or integer-type variable, and gender, ethnicity, ideology, education categoryshould be factor-type variables. *We will treat the "worse" variable differently this time; rather than a factor variable, we will treat it as a numeric variable.* The reason for this is because we will be computing validation-set and test-set model deviances in a later question, and the function to do that requires a numeric 0/1 outcome. Check that you've done this correctly by using the str() function.
+
+```{r}
+# Convert variables to the correct types
+pew.life$income <- as.numeric(pew.life$PPINCIMP)      # Income as numeric
+pew.life$gender <- as.factor(pew.life$PPGENDER)       # Gender as factor
+pew.life$eth <- as.factor(pew.life$PPETHM)            # Ethnicity as factor
+pew.life$ideo <- as.factor(pew.life$IDEO)             # Ideology as factor
+pew.life$edu <- as.factor(pew.life$PPEDUCAT)          # Education as factor
+pew.life$worse <- as.numeric(pew.life$worse)          # Outcome as numeric
+
+# Display the structure to confirm types
+str(pew.life)
+```
+
+## Question 2 - Splitting the data into training, validation, and test tests - 5 points
+
+We will use the train-validate-test procedure to assess model generalizability. The first step of the train-validate-test process is to split the data into training, validation, and test sets. To make this easier, first create a new data set that contains only the variables that will be used in the analysis:
+
+worse 
+income  
+gender  
+eth   
+ideo    
+edu
+
+```{r}
+# Create a new data set containing only the specified variables
+pew.life2 <- pew.life %>% select(worse, income, gender, eth, ideo, edu)
+
+# Display the structure of the new data set to confirm variable types
+str(pew.life2)
+```
+
+Saving the number of rows in this new data set will be useful, so run the following code chunk to do so.
+
+```{r}
+# Save the number of rows in pew.life2 for further use
+n <- nrow(pew.life2)
+n
+```
+
+In the async material, the following line of code was provided to help create the split:
+tvt2 <- sample(rep(0:2,c(round(n*.2),round(n*.2),n-2*round(n*.2))),n)
+
+To help you understand what's going on here before you use it, have a look at what's produced by what's in the inner rep() function by running the code chunk below.
+
+```{r}
+Sixty.twenty.twenty <- rep(0:2,c(round(n*.2),round(n*.2),n-2*round(n*.2)))
+table(Sixty.twenty.twenty)
+
+Seventy.fifteen.fifteen <- rep(0:2,c(round(n*.15),round(n*.15),n-2*round(n*.15)))
+table(Seventy.fifteen.fifteen)
+
+Eighty.ten.ten <- rep(0:2,c(round(n*.10),round(n*.10),n-2*round(n*.10)))
+table(Eighty.ten.ten)
+
+Ninety.five.five <- rep(0:2,c(round(n*.05),round(n*.05),n-2*round(n*.05)))
+table(Ninety.five.five)
+```
+
+A) Which value/s in these tables (0, 1, or 2) correspond to the portion of sample that will be assigned to the training set?
+Your answer here: The value 2 corresponds to the portion of the sample assigned to the training set in each scenario. In tvt2, a value of 2 represents the majority of the sample allocated to the training set.
+
+B) Which value/s in these tables (0, 1, or 2) correspond to the portion of sample that will be assigned to the validation and test sets, respectively?
+Your answer here: The values 1 and 0 correspond to the validation and test sets, respectively. 
+
+Split your data set into training, validation, and test sets. Use the following proportions: 70% training, 15% validation, and 15% test.
+When splitting data into training/validation/test data sets, it's good practice to set a random seed to create a split that's reproducible (i.e., recoverable later). For this question, use the seed provided. To ensure that your answers match, be sure to run the set.seed() line *immediately* before your completed tvt2 line. 
+
+```{r}
+# Set seed for reproducibility
+set.seed(202205)
+
+# Generate the 70-15-15 split for training, validation, and test sets
+tvt2 <- sample(rep(0:2, c(round(n * 0.15), round(n * 0.15), n - 2 * round(n * 0.15))), n)
+
+# Split the data based on tvt2 values
+dat.train <- pew.life2[tvt2 == 2, ]
+dat.valid <- pew.life2[tvt2 == 1, ]
+dat.test <- pew.life2[tvt2 == 0, ]
+
+# Display the row counts for each set
+nrow(dat.train)
+nrow(dat.valid)
+nrow(dat.test)
+```
+
+C) How many rows are in the dat.train data set?
+Your answer here: 2804. This corresponds to the number of rows in the training set (dat.train) after using the 70-15-15 split.
+
+D) How many rows are in the dat.valid data set?
+Your answer here: 601. This is the row count for the validation set (dat.valid) after splitting.
+
+E) How many rows are in the dat.test data set?
+Your answer here: 601. This is the row count for the test set (dat.test) after splitting.
+
+## Question 3 - Fitting candidate models to the training data set and saving the results - 5 points
+
+For this problem set, you'll assess the generalizability of the three models you fitted in Problem Set 5. Here are the four models you will test, all of which will use "worse" as the outcome:
+Model 1: Include income as a continuous predictor and gender as a categorical predictor. 
+Model 2: In addition to the predictors in Model 1, include ethnicity and education as categorical predictors.
+Model 3: In addition to the predictors in Model 2, include the ideology variable.
+
+The second step of the train-validate-test process is to "train" your models on the training set - that is, you will fit the three logistic regression models to the training set data to generate coefficient estimates for the predictors in each model. Fit these models in the code chunk below and save the model objects as model.1, model.2, and model.3 respectively. 
+
+```{r}
+# Model 1: Include income and gender as predictors
+model.1 <- glm(worse ~ income + gender, data = dat.train, family = 'binomial')
+summary(model.1)
+
+# Model 2: Add ethnicity (eth) and education (edu) as additional predictors
+model.2 <- glm(worse ~ income + gender + eth + edu, data = dat.train, family = 'binomial')
+summary(model.2)
+
+# Model 3: Add ideology (ideo) as an additional predictor
+model.3 <- glm(worse ~ income + gender + eth + edu + ideo, data = dat.train, family = 'binomial')
+summary(model.3)
+```
+
+## Question 4 - Computing validation deviances and choosing a model to advance - 5 points
+
+The third step of this process is to take the models estimated using the training set data, run the validation set data through those models to obtain new predictions, then evaluate the result using a predetermined criterion. In this case, we'll use model deviance as the criterion. There is a useful function for this provided in the async material (5.2.1: backward_train_validate_test_5_2_1), which I've copied below for convenience: 
+
+valid.dev<-function(m.pred, dat.this){
+   pred.m<-predict(m.pred,dat.this, type="response")
+ -2*sum(dat.this$chd*log(pred.m)+(1-dat.this$chd)*log(1-pred.m))
+ }
+
+Start by adapting this code to work for the current data set
+
+```{r}
+# Modify the valid.dev function for this data set using "worse" as the binary outcome variable
+valid.dev <- function(m.pred, dat.this) {
+  pred.m <- predict(m.pred, dat.this, type = "response")  # Generate predicted probabilities
+  -2 * sum(dat.this$worse * log(pred.m) + (1 - dat.this$worse) * log(1 - pred.m))  # Compute model deviance
+}
+```
+
+Next, apply this function to your three candidate models to obtain the validation deviances. After doing so, answer the questions below.
+
+```{r}
+# Deviance for Model 1
+dev.1 <- valid.dev(model.1, dat.valid)
+dev.1
+
+# Deviance for Model 2
+dev.2 <- valid.dev(model.2, dat.valid)
+dev.2
+
+# Deviance for Model 3
+dev.3 <- valid.dev(model.3, dat.valid)
+dev.3
+```
+
+A) What is the validation deviance of Model 1?
+Your answer here: 815.5384
+
+B) What is the validation deviance of Model 2?
+Your answer here: 808.0623
+
+C) What is the validation deviance of Model 3?
+Your answer here: 799.8163
+
+D) Based on the validation deviances you computed, which model do you choose based on the results you obtained?
+Your answer here: Model 3. It has the lowest validation deviance (799.8163), indicating the best fit on the validation set among the three models.
+
+## Question 5 - Evaluating the model chosen in the validation step using the test set data - 5 points
+
+Now that you've chosen a candidate model based on its performance on the validation data set, you'll now do the final step in the process: compute the deviance of this model when applied to the test data set.
+Use the adapted deviance function to compute the deviances of the chosen model when applied to the test set. 
+
+```{r}
+# Compute the deviance of the chosen model (Model 3) on the test set
+test.dev <- valid.dev(model.3, dat.test)
+test.dev
+```
+
+A) What is the deviance of the chosen model when applied to the test set? 
+Your answer here: The test set deviance of Model 3, our chosen model, is 812.8986.
+
+------
+
+CONTEXT - HOUSE VALUES IN BOSTON, CIRCA 1970
+This dataset was obtained through the mlbench package, which contains a subset of data sets available through the UCI Machine Learning Repository. From the help file:
+Housing data for 506 census tracts of Boston from the 1970 census. The dataframe BostonHousing contains the original data by Harrison and Rubinfeld (1979).
+The original data are 506 observations on 14 variables.
+
+Continuous variables:
+crim	    per capita crime rate by town 
+zn      	proportion of residential land zoned for lots over 25,000 sq.ft  
+indus   	proportion of non-retail business acres per town
+nox	      nitric oxides concentration (parts per 10 million)
+rm	      average number of rooms per dwelling
+age	      proportion of owner-occupied units built prior to 1940
+dis	      weighted distances to five Boston employment centres
+rad	      index of accessibility to radial highways
+tax	      full-value property-tax rate per USD 10,000
+ptratio	  pupil-teacher ratio by town
+b	        1000(B - 0.63)^2 where B is the proportion of blacks by town
+lstat	    percentage of lower status of the population
+medv	    median value of owner-occupied homes in USD 1000's
+
+Categorical variables: 
+chas	    Charles River dummy variable (= 1 if tract bounds river; 0 otherwise)
+
+## Question 6 - Cross-validated ridge regression - 10 points
+
+The BostonHousing data is contained inside of an R package, so you'll load the data into memory a little differently than usual. Run the following code chunk, confirm that the data in loaded into memory, and ensure that your variables are of the proper type (they should be)
+
+```{r}
+# Load the BostonHousing dataset from the mlbench package
+data(BostonHousing)
+
+# Display the structure of the dataset to confirm variable types
+str(BostonHousing)
+```
+
+For this question, conduct a cross-validated ridge regression. Use medv as the outcome and all of the other variables in the data set as the predictors. *Do NOT split your data into training and test sets for this question;* conduct the analysis on the whole data set.
+First, conduct the cross-validated ridge regression. Be sure to use the set.seed() provided to make your analysis reproducible.
+
+```{r}
+set.seed(202211)
+
+# Set up the design matrix (predictors) for ridge regression, omitting the intercept
+X <- model.matrix(medv ~ ., data = BostonHousing)[,-1]
+# Set up the response vector (outcome)
+y <- BostonHousing$medv
+
+# Conduct cross-validated ridge regression (alpha = 0 for ridge regression)
+cvfit.house.ridge <- cv.glmnet(x = X, y = y, alpha = 0) 
+```
+
+Next, display the value for lambda.min *and* the coefficients associated with it. Make sure these are visible in your knitted document. 
+
+```{r}
+# Display lambda that minimizes cross-validation error
+cvfit.house.ridge$lambda.min
+
+# Display the coefficients associated with lambda.min
+coef(cvfit.house.ridge, s = "lambda.min")
+```
+
+Finally, display the value for lambda.1se *and* the coefficients associated with it. Again, make sure these are visible in your knitted document. 
+
+```{r}
+# Display lambda that is one standard error away from lambda.min
+cvfit.house.ridge$lambda.1se
+
+# Display the coefficients associated with lambda.1se
+coef(cvfit.house.ridge, s = "lambda.1se")
+```
+
+## Question 7 - Cross-validated lasso regression - 10 points
+
+For this question, you will use the same outcome (medv) and the same predictors in the as in the last question, but you will instead conduct a cross-validated lasso regression. *Do NOT split your data into training and test sets for this question*; conduct the analysis on the whole data set.
+First, conduct the cross-validated lasso regression. Be sure to use the set.seed() provided to make your analysis reproducible.
+
+```{r}
+# Prepare data for lasso regression (already formatted as X and y in previous steps)
+# X is the matrix of predictors, and y is the outcome (medv)
+
+set.seed(202211) # Ensures reproducibility
+
+# Conduct cross-validated lasso regression (alpha = 1 for lasso regression)
+cvfit.house.lasso <- cv.glmnet(x = X, y = y, alpha = 1)
+```
+
+Next, display the value for lambda.min and the coefficients associated with it. Make sure these are visible in your knitted document. 
+
+```{r}
+# Display lambda that minimizes cross-validation error
+cvfit.house.lasso$lambda.min
+
+# Display the coefficients associated with lambda.min
+coef(cvfit.house.lasso, s = "lambda.min")
+```
+
+Finally, display the value for lambda.1se and the coefficients associated with it. Again, make sure these are visible in your knitted document. 
+
+```{r}
+# Display lambda that is one standard error away from lambda.min
+cvfit.house.lasso$lambda.1se
+
+# Display the coefficients associated with lambda.1se
+coef(cvfit.house.lasso, s = "lambda.1se")
+```
+
+## Question 3 - 5 points
+
+An important difference between ridge regression and lasso regression is that predictors can be dropped from a model in lasso but not in ridge. The number of predictors set to zero (if any) in lasso depends on the extent of the coefficient shrinkage at a given lambda. Answer the two questions below about the results of your cross-validated lasso models. 
+
+1) Among the set of coefficients associated with *lambda.min* in the cross-validated lasso regression, which predictors were set to zero? Please list them. 
+Your answer here: age.
+
+2) Among the set of coefficients associated with *lambda.1se* in the cross-validated lasso regression, which predictors were set to zero? Please list them. 
+Your answer here: zn, indus, age, rad, tax.
+
+3) Which of these - lambda.min or lambda.1se - had more coefficients set to zero? 
+Your answer here: lambda.1se had more coefficients set to zero compared to lambda.min, indicating a simpler model.
+
+# END.
+
+
